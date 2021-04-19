@@ -1,21 +1,21 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * <h2><center>&copy; Copyright (c) 2020 STMicroelectronics.
-  * All rights reserved.</center></h2>
-  *
-  * This software component is licensed by ST under BSD 3-Clause license,
-  * the "License"; You may not use this file except in compliance with the
-  * License. You may obtain a copy of the License at:
-  *                        opensource.org/licenses/BSD-3-Clause
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * <h2><center>&copy; Copyright (c) 2020 STMicroelectronics.
+ * All rights reserved.</center></h2>
+ *
+ * This software component is licensed by ST under BSD 3-Clause license,
+ * the "License"; You may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at:
+ *                        opensource.org/licenses/BSD-3-Clause
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -34,6 +34,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define BUFSIZE 12 //8 for address, 2 for cmd, 2 for param
+#define CELLNUMB 1
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -62,13 +63,72 @@ DMA_HandleTypeDef hdma_usart3_tx;
 
 /* USER CODE BEGIN PV */
 uint8_t tx_buff[BUFSIZE];
-uint8_t rx_buff[BUFSIZE] = {0,};
-//uint8_t address[8] = {0xf0,0xfc,0xfb,0xff,0x12,0xff,0x33,0xff};
-uint8_t address[8] = {0xff,0xff,0xaa,0xff,0xaa,0xff,0xaa,0xff};
-//uint8_t address[8] = {0xff,0xbf,0xfa,0x00,0x00,0xab,0x00,0xff};
+uint8_t rx_buff[BUFSIZE] = { 0, };
+
+uint8_t cell_numb;
+
+#if CELLNUMB == 1
+	uint8_t address[8] = { 0xf0, 0xfc, 0xfb, 0xff, 0x12, 0xff, 0x33, 0xff };
+	uint8_t sideAmount = 4;
+	uint16_t sidePins[4] = {	side1_Pin,
+								side2_Pin,
+								side3_Pin,
+								side4_Pin };
+	GPIO_TypeDef* sidePorts[4] = { 	side1_GPIO_Port,
+									side2_GPIO_Port,
+									side3_GPIO_Port,
+									side4_GPIO_Port };
+	uint8_t sideconnections[4][8];
+#elif CELLNUMB == 2
+	uint8_t address[8] = { 0xff, 0xff, 0xaa, 0xff, 0xaa, 0xff, 0xaa, 0xff };
+	uint8_t sideAmount = 6;
+	uint16_t sidePins[6] = {	side1_Pin,
+								side2_Pin,
+								side3_Pin,
+								side4_Pin,
+								side5_Pin,
+								side6_Pin};
+	GPIO_TypeDef* sidePorts[6] = {	side1_GPIO_Port,
+									side2_GPIO_Port,
+									side3_GPIO_Port,
+									side4_GPIO_Port,
+									side5_GPIO_Port,
+									side6_GPIO_Port};
+	uint8_t sideconnections[6][8];
+#elif CELLNUMB == 3
+	uint8_t address[8] = { 0xff, 0xbf, 0xfa, 0x00, 0x00, 0xab, 0x00, 0xff };
+	uint8_t sideAmount = 8;
+	uint16_t sidePins[8] = {	side1_Pin,
+								side2_Pin,
+								side3_Pin,
+								side4_Pin,
+								side5_Pin,
+								side7_Pin,
+								side6_Pin,
+								side8_Pin};
+	GPIO_TypeDef* sidePorts[8] = {	side1_GPIO_Port,
+									side2_GPIO_Port,
+									side3_GPIO_Port,
+									side4_GPIO_Port,
+									side5_GPIO_Port,
+									side7_GPIO_Port,
+									side6_GPIO_Port,
+									side8_GPIO_Port};
+	uint8_t sideconnections[8][8];
+#else
+	uint8_t address[8] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+	uint8_t sideAmount = 1;
+	uint16_t sidePins[1];
+	uint16_t sidePorts[1];
+	uint8_t sideconnections[1][8];
+#endif
+uint8_t activeNAddr[8];
 uint16_t task = 0;
+uint8_t reading_pin_nmb = 0;
+uint8_t writing_pin_nmb = 0;
+uint8_t write_read_side_flag = 0;
 uint8_t tempData[2];
-union{
+union {
 	float f;
 	uint8_t array[4];
 } temp;
@@ -139,37 +199,33 @@ int main(void)
   MX_TIM2_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-  TIM1->CCR1 = 0;
-  TIM1->CCR2 = 0;
-  TIM1->CCR3 = 0;
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+	TIM1->CCR1 = 0;
+	TIM1->CCR2 = 0;
+	TIM1->CCR3 = 0;
 
-  HAL_TIM_Base_Start_IT(&htim2);
+	HAL_TIM_Base_Start_IT(&htim2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
-  longBlinkPurple();
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
+	longBlinkPurple();
 
+	HAL_HalfDuplex_EnableReceiver(&huart3);
+	if (HAL_UART_Receive_DMA(&huart3, rx_buff, BUFSIZE) == !HAL_OK) {
+		Error_Handler();
+	}
 
-
-  HAL_HalfDuplex_EnableReceiver(&huart3);
-  if(HAL_UART_Receive_DMA (&huart3, rx_buff, BUFSIZE)==!HAL_OK){Error_Handler();}
-
-
-
-
-  while (1)
-  {
+	while (1) {
 
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-  }
+	}
   /* USER CODE END 3 */
 }
 
@@ -511,7 +567,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 8000;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 2000;
+  htim2.Init.Period = 1000;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -549,15 +605,14 @@ static void MX_TIM3_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM3_Init 1 */
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
+  htim3.Init.Prescaler = 16000;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 10;
+  htim3.Init.Period = 200;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -569,40 +624,15 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
-  {
-    Error_Handler();
-  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
-  HAL_TIM_MspPostInit(&htim3);
 
 }
 
@@ -700,7 +730,7 @@ static void MX_USART3_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART3_Init 2 */
-  HAL_NVIC_EnableIRQ(USART3_IRQn);
+	HAL_NVIC_EnableIRQ(USART3_IRQn);
   /* USER CODE END USART3_Init 2 */
 
 }
@@ -740,8 +770,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, mosfet1_Pin|mosfet2_Pin|mosfet4_Pin|mosfet3_Pin
-                          |side3_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, mosfet1_Pin|mosfet2_Pin|mosfet4_Pin|mosfet3_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
@@ -749,32 +778,12 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : mosfet1_Pin mosfet2_Pin mosfet4_Pin mosfet3_Pin
-                           side3_Pin */
-  GPIO_InitStruct.Pin = mosfet1_Pin|mosfet2_Pin|mosfet4_Pin|mosfet3_Pin
-                          |side3_Pin;
+  /*Configure GPIO pins : mosfet1_Pin mosfet2_Pin mosfet4_Pin mosfet3_Pin */
+  GPIO_InitStruct.Pin = mosfet1_Pin|mosfet2_Pin|mosfet4_Pin|mosfet3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : side8_Pin side7_Pin */
-  GPIO_InitStruct.Pin = side8_Pin|side7_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : side6_Pin side5_Pin side4_Pin */
-  GPIO_InitStruct.Pin = side6_Pin|side5_Pin|side4_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : side2_Pin */
-  GPIO_InitStruct.Pin = side2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(side2_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PA15 */
   GPIO_InitStruct.Pin = GPIO_PIN_15;
@@ -782,12 +791,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : side1_Pin */
-  GPIO_InitStruct.Pin = side1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(side1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PB4 */
   GPIO_InitStruct.Pin = GPIO_PIN_4;
@@ -799,14 +802,76 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-	if(huart == &huart3)
-	{
 
-		 HAL_HalfDuplex_EnableReceiver(&huart3);
-		 if(HAL_UART_Receive_DMA (&huart3, rx_buff, BUFSIZE)==!HAL_OK){shortBlinkRed();}
-		 task =0;
+void changeSidesToRead() {
+	GPIO_InitTypeDef GPIO_InitStruct = { 0 };
+
+	GPIO_InitStruct.Pin = side1_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(side1_GPIO_Port, &GPIO_InitStruct);
+
+	GPIO_InitStruct.Pin = side2_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(side2_GPIO_Port, &GPIO_InitStruct);
+
+	GPIO_InitStruct.Pin = side6_Pin | side5_Pin | side4_Pin | side3_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+	GPIO_InitStruct.Pin = side8_Pin | side7_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+	write_read_side_flag = 0;
+}
+
+void changeSidesToWrite() {
+	GPIO_InitTypeDef GPIO_InitStruct = { 0 };
+
+	HAL_GPIO_WritePin(side1_GPIO_Port, side1_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(side2_GPIO_Port, side2_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOC, side6_Pin | side5_Pin | side4_Pin | side3_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOB, side8_Pin | side7_Pin, GPIO_PIN_RESET);
+
+	GPIO_InitStruct.Pin = side1_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+	HAL_GPIO_Init(side1_GPIO_Port, &GPIO_InitStruct);
+
+	GPIO_InitStruct.Pin = side2_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+	HAL_GPIO_Init(side2_GPIO_Port, &GPIO_InitStruct);
+
+	GPIO_InitStruct.Pin = side6_Pin | side5_Pin | side4_Pin | side3_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+	GPIO_InitStruct.Pin = side8_Pin | side7_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+	write_read_side_flag = 1;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
+	if (huart == &huart3) {
+
+		HAL_HalfDuplex_EnableReceiver(&huart3);
+		if (HAL_UART_Receive_DMA(&huart3, rx_buff, BUFSIZE) == !HAL_OK) {
+			shortBlinkRed();
+		}
+		task = 0;
 
 		shortBlinkGreen();
 	}
@@ -814,88 +879,168 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 }
 
 uint8_t activesearch = 1;
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-	  if(huart == &huart3)
-	  {
-		  if(task == 0){
-			  task =  rx_buff[8]<<8|rx_buff[9];
-			  if(compareAddr(rx_buff, address) || isAddrUniversal(rx_buff)){
-			 		  if(task==0x0001){ //address search
-			 			  uint8_t param = rx_buff[11];
-			 			  uint8_t prevBitParam = rx_buff[10];
-			 			  if(param == 0){
-			 				  activesearch = 1;
-			 			  }else{
-			 				  uint8_t priviousBit = ((address[(param-1)/8]>>((param-1) % 8)))&0x01;
-			 				  if(((prevBitParam&0x01) != priviousBit) && activesearch){
-			 					  activesearch = 0;
-			 				  }
-			 			  }
-			 			  if (activesearch){
-			 				 	  tx_buff[0] = (address[param/8]>>(param%8)&0x01);
-			 					  tx_buff[1] = !(tx_buff[0]);
-			 					  for(int wait=0; wait< 100; wait++);
-			 					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, tx_buff[0]);
-			 					  for(int wait=0; wait< 100; wait++);
-			 					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, tx_buff[1]);
-			 					  for(int wait=0; wait< 100; wait++);
-			 					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, 1);
-			 					  for(int wait=0; wait< 50; wait++);
-			 			  }else{
-			 				  	  for(int wait=0; wait< 400; wait++);
-			 			  }
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+	if (huart == &huart3) {
+		if (task == 0) {
+			task = rx_buff[8] << 8 | rx_buff[9];
+			if (compareAddr(rx_buff, address) || isAddrUniversal(rx_buff)) {
+				if (task == 0x0001) { //address search
+					uint8_t param = rx_buff[11];
+					uint8_t prevBitParam = rx_buff[10];
+					if (param == 0) {
+						activesearch = 1;
+					} else {
+						uint8_t priviousBit = ((address[(param - 1) / 8]
+								>> ((param - 1) % 8))) & 0x01;
+						if (((prevBitParam & 0x01) != priviousBit)
+								&& activesearch) {
+							activesearch = 0;
+						}
+					}
+					if (activesearch) {
+						tx_buff[0] = (address[param / 8] >> (param % 8) & 0x01);
+						tx_buff[1] = !(tx_buff[0]);
+						for (int wait = 0; wait < 100; wait++)
+							;
+						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, tx_buff[0]);
+						for (int wait = 0; wait < 100; wait++)
+							;
+						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, tx_buff[1]);
+						for (int wait = 0; wait < 100; wait++)
+							;
+						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, 1);
+						for (int wait = 0; wait < 50; wait++)
+							;
+					} else {
+						for (int wait = 0; wait < 400; wait++)
+							;
+					}
 
-						 HAL_HalfDuplex_EnableReceiver(&huart3);
-						 task =0;
-						 if(HAL_UART_Receive_DMA (&huart3, rx_buff, BUFSIZE)==!HAL_OK){shortBlinkPurple();}
+					HAL_HalfDuplex_EnableReceiver(&huart3);
+					task = 0;
+					if (HAL_UART_Receive_DMA(&huart3, rx_buff, BUFSIZE)
+							== !HAL_OK) {
+						shortBlinkPurple();
+					}
 
-			 			  /*HAL_HalfDuplex_EnableTransmitter(&huart3);
-			 			  HAL_UART_Transmit_DMA(&huart3, tx_buff, 2);*/
-			 		  }
+					/*HAL_HalfDuplex_EnableTransmitter(&huart3);
+					 HAL_UART_Transmit_DMA(&huart3, tx_buff, 2);*/
+				}
 
-			 		  if(task==0x0002){
-			 			  shortBlinkGreen();
-			 			  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
-						  HAL_SPI_Receive(&hspi1, tempData, 2, 500);
-						  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
-						  temp.f= ((tempData[1]>>3) | (tempData[0]<<5))/4.0f;
-						  uint8_t txarr[4];
-						  txarr[0]=temp.array[0];
-						  txarr[1]=temp.array[1];
-						  txarr[2]=temp.array[2];
-						  txarr[3]=temp.array[3];
-						  HAL_HalfDuplex_EnableTransmitter(&huart3);
-						  HAL_UART_Transmit_DMA(&huart3, txarr, 4);
-			 		  }
-			 	  }
-			  }
+				if (task == 0x0002) {
+					shortBlinkGreen();
+					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
+					HAL_SPI_Receive(&hspi1, tempData, 2, 500);
+					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
+					temp.f = ((tempData[1] >> 3) | (tempData[0] << 5)) / 4.0f;
+					uint8_t txarr[4];
+					txarr[0] = temp.array[0];
+					txarr[1] = temp.array[1];
+					txarr[2] = temp.array[2];
+					txarr[3] = temp.array[3];
+					HAL_HalfDuplex_EnableTransmitter(&huart3);
+					HAL_UART_Transmit_DMA(&huart3, txarr, BUFSIZE);
+					return;
+				}
+
+				if (task == 0x0003) {
+					/*satrt tougle pins in order by schedule*/
+					for (int jj = 0; jj < 8; jj++) {
+						activeNAddr[jj] = address[jj];
+					}
+					changeSidesToWrite();
+					writing_pin_nmb = 0;
+					TIM3->CNT = 100;
+					//shortBlinkRed();
+					HAL_TIM_Base_Start_IT(&htim3);
+					return;
+				}
+			} else {
+				if (task == 0x0003) {
+					/*satrt read pins by schedule*/
+					changeSidesToRead();
+					reading_pin_nmb = 0;
+					TIM3->CNT = 0;
+					HAL_TIM_Base_Start_IT(&htim3);
+					return;
+				}
+			}
+			task = 0;
+			HAL_HalfDuplex_EnableReceiver(&huart3);
+			HAL_UART_Receive_DMA(&huart3, rx_buff, BUFSIZE);
 		}
-	 /* shortBlinkBlue();*/
+	}
+	/* shortBlinkBlue();*/
 }
 
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
-{
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
 	/*TIM1->CCR2 = 1000;*/
-	if(huart == &huart3)
-	{
+	if (huart == &huart3) {
 
-		if(task == 0){
-		if(HAL_UART_Receive_DMA (&huart3, rx_buff, BUFSIZE)==!HAL_OK){shortBlinkPurple();}
+		if (task == 0) {
+			if (HAL_UART_Receive_DMA(&huart3, rx_buff, BUFSIZE) == !HAL_OK) {
+				shortBlinkPurple();
+			}
 		}
 	}
 }
 
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-	if(htim == &htim2)
-	  	{
-			if(task == 0){
-				HAL_HalfDuplex_EnableReceiver(&huart3);
-				if(HAL_UART_Receive_DMA (&huart3, rx_buff, BUFSIZE)==!HAL_OK){shortBlinkPurple();}
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	if (htim == &htim2) {
+		if (task == 0) {
+			HAL_HalfDuplex_EnableReceiver(&huart3);
+			if (HAL_UART_Receive_DMA(&huart3, rx_buff, BUFSIZE) == !HAL_OK) {
+				shortBlinkPurple();
 			}
-	  	}
+		}
+	}
+
+	if (htim == &htim3) {
+		if (task == 3) {
+			if (write_read_side_flag == 0) {
+				if (reading_pin_nmb < sideAmount) {
+					TIM1->CCR1 = 2000 * (reading_pin_nmb % 2);
+					for (int ii = 0; ii < sideAmount; ii++) {
+						if (HAL_GPIO_ReadPin(sidePorts[ii], sidePins[ii])) {
+							for (int jj = 0; jj < 8; jj++) {
+								sideconnections[ii][jj] =
+										activeNAddr[jj];
+							}
+							sideconnections[ii][8]=reading_pin_nmb;
+						}
+					}
+				}
+				reading_pin_nmb++;
+				if (reading_pin_nmb > sideAmount) {
+					HAL_TIM_Base_Stop_IT(&htim3);
+					TIM1->CCR1 = 0;
+					task = 0;
+					HAL_HalfDuplex_EnableReceiver(&huart3);
+					HAL_UART_Receive_DMA(&huart3, rx_buff, BUFSIZE);
+				}
+			}
+			if (write_read_side_flag == 1) {
+				TIM1->CCR3 = 2000 * (writing_pin_nmb % 2);
+				for (int ii = 0; ii < sideAmount; ii++) {
+					HAL_GPIO_WritePin(sidePorts[ii], sidePins[ii], RESET);
+				}
+
+				if (writing_pin_nmb < sideAmount) {
+					HAL_GPIO_WritePin(sidePorts[writing_pin_nmb],
+							sidePins[writing_pin_nmb], SET);
+				}
+
+				writing_pin_nmb++;
+				if (writing_pin_nmb > sideAmount) {
+					HAL_TIM_Base_Stop_IT(&htim3);
+					TIM1->CCR3 = 0;
+					task = 0;
+					HAL_HalfDuplex_EnableReceiver(&huart3);
+					HAL_UART_Receive_DMA(&huart3, rx_buff, BUFSIZE);
+				}
+			}
+		}
+	}
 }
 
 /* USER CODE END 4 */
@@ -907,12 +1052,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
+	/* User can add his own implementation to report the HAL error return state */
+	__disable_irq();
+	NVIC_SystemReset();
+	while (1) {
 
-  }
+	}
   /* USER CODE END Error_Handler_Debug */
 }
 
